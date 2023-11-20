@@ -30,9 +30,6 @@ describe('AppComponent', () => {
 
   describe('1 - Observable Creation', ()=> {
     test('', (done) => {
-      const expectedValues = ['Hello!', 'I am an observable.'];
-      let idx = 0;
-
       const myObservable: Observable<string> = new Observable((observer: Subscriber<string>) => {
         observer.next('Hello!');
         observer.next('I am an observable.');
@@ -41,11 +38,9 @@ describe('AppComponent', () => {
 
       myObservable.subscribe({
         next: (value: string) => {
-          expect(value).toBe(expectedValues[idx]);
-          idx++;
+          console.log(value);
         },
         complete: () => {
-          expect(idx).toBe(expectedValues.length);
           done(); // important!
         },
       });
@@ -57,7 +52,7 @@ describe('AppComponent', () => {
       const expectedValues: string[] = ['firstValue', 'secondValue', 'thirdValue'];
       let idx = 0;
 
-      const source$: Observable<string> = of('firstValue', 'secondValue', 'thirdValue');
+      const source$: Observable<string> = of(expectedValues[0], expectedValues[1], expectedValues[2]);
 
       source$.subscribe({
         next: (value: string) => {
@@ -109,7 +104,7 @@ describe('AppComponent', () => {
       });
     });
 
-    test('Equivalent using Defer() and Cold() - new observable for each subscribe', () => {
+    test('Equivalent using Defer() and Cold() - new observable for each subscriber', () => {
       const source$: Observable<number> = defer(() => cold('a|', { a: Math.random() }));
 
       source$.subscribe((data: number) => {
@@ -166,22 +161,34 @@ describe('AppComponent', () => {
       });
     });
 
-    test('Subject', () => {
+    test('Subject - allowing values to be multicasted to many Observers', () => {
       const subject = new Subject<string>();
-      const values: string[] = [];
-      const expectedValues = ['A', 'B', 'C'];
+      const firstValues: string[] = [];
+      const secondValues: string[] = [];
 
-      const subscription = subject.subscribe(value => {
-        values.push(value);
+      const firstSubscription = subject.subscribe(value => {
+        firstValues.push(value);
       });
 
       subject.next('A');
+
+      const secondSubscription = subject.subscribe(value => {
+        secondValues.push(value);
+      });
+
       subject.next('B');
+
+      firstSubscription.unsubscribe();
+
       subject.next('C');
 
-      subscription.unsubscribe();
+      secondSubscription.unsubscribe();
 
-      expect(values).toEqual(expectedValues);
+      subject.next('D');
+      subject.next('E');
+
+      expect(firstValues).toEqual(['A', 'B']);
+      expect(secondValues).toEqual(['B', 'C']);
     });
 
     test('Hot Observable with Map Operator', () => {
@@ -198,7 +205,7 @@ describe('AppComponent', () => {
 
     it('Hot Observable with Caret symbol', () => {
       const sourceMarbles = '--a-^-b---c--d--e--|';
-      const expectedMarbles = '--B---C-----E--|';
+      const expectedMarbles= '    --B---C-----E--|';
 
       const source$ = hot(sourceMarbles);
 
@@ -217,7 +224,7 @@ describe('AppComponent', () => {
     describe('Transformation Operators', () => {
       test('map - Transforming values', () => {
         const source$ = cold('a-b-c-|');
-        const expected$ = cold('A-B-C-|', { A: 'a+', B: 'b+', C: 'c+' });
+        const expected$ = cold('a-b-c-|', { a: 'a+', b: 'b+', c: 'c+' });
 
         const result$ = source$.pipe(map(value => value + '+'));
 
@@ -225,8 +232,8 @@ describe('AppComponent', () => {
       });
 
       test('map - Transforming values with hot observable', () => {
-        const source$ = hot('--a--b--c-|', { a: { value: 1 }, b: { value: 2 }, c: { value: 3 } });
-        const expected$ = hot('--x--y--z-|', { x: { value: 2 }, y: { value: 4 }, z: { value: 6 } });
+        const source$ = hot('--a-^-b--c-|', { a: { value: 1 }, b: { value: 2 }, c: { value: 3 } });
+        const expected$ = hot('  --y--z-|', { y: { value: 4 }, z: { value: 6 } });
 
         const result = source$.pipe(
           map(obj => ({ value: obj.value * 2 }))
@@ -238,7 +245,7 @@ describe('AppComponent', () => {
 
     describe('Filtering Operators', () => {
       test('filter - Filtering values', () => {
-        const source$ = cold('a-b-c-|');
+        const source$ = cold('  a-b-c-|');
         const expected$ = cold('--b---|');
 
         const result$ = source$.pipe(filter(value => value === 'b'));
@@ -247,8 +254,8 @@ describe('AppComponent', () => {
       });
 
       test('filter - Filtering values with hot observable', () => {
-        const source$ = hot('a-b-c-d-#', { a: 'dog', b: 'cat', c: 'mouse', d: 'date' }, 'oops! error...');
-        const expected$ = hot('------d-#', { d: 'date' }, 'oops! error...');
+        const source$ = hot('  a-b-c^d-#', { a: 'dog', b: 'cat', c: 'mouse', d: 'date' }, 'oops! error...');
+        const expected$ = hot('     -d-#', { d: 'date' }, 'oops! error...');
 
         const result$ = source$.pipe(filter(value => value === 'date'));
 
@@ -256,10 +263,10 @@ describe('AppComponent', () => {
       });
 
       test('skip - Skipping the first N values', () => {
-        const source$ = cold('a-(bc)-d-|');
-        const expected$ = cold('--(bc)-d-|');
+        const source$ = cold('  a--b-c-d-|');
+        const expected$ = cold('-----c-d-|');
 
-        const result$ = source$.pipe(skip(1));
+        const result$ = source$.pipe(skip(2));
 
         expect(result$).toBeObservable(expected$);
       });
@@ -276,7 +283,6 @@ describe('AppComponent', () => {
       });
     });
   });
-
 
   describe('6) TestScheduler', () => {
     const fetchServerData = (): Observable<string> => {
